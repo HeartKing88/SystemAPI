@@ -1,56 +1,40 @@
-import os
-import uuid
-import pymongo
 from pyrogram import Client, filters
+from config import Config
+import requests
 
-MONGO_URL = os.getenv("MONGO_URL")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
+# Bot Client
+bot = Client(
+    "api_generator_bot",
+    api_id=Config.API_ID,
+    api_hash=Config.API_HASH,
+    bot_token=Config.BOT_TOKEN
+)
 
-# MongoDB setup
-mongo = pymongo.MongoClient(MONGO_URL)
-db = mongo["apikey_bot"]
-users = db["users"]
-
-bot = Client("apikey-bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-
+# Start command
 @bot.on_message(filters.command("start"))
-def start(_, msg):
-    msg.reply_text(
-        "🎶 Welcome to the Music API Bot!\n\n"
-        "Use /apikey to get your API key.\n"
-        "Use /plan to view your usage."
+async def start(_, message):
+    await message.reply_text(
+        "👋 Welcome! Ye bot tumhe YouTube API key generate karke dega.\n\n"
+        "API key banane ke liye use karo:\n"
+        "`/getkey`"
     )
 
-@bot.on_message(filters.command("apikey"))
-def apikey(_, msg):
-    user_id = msg.from_user.id
-    user = users.find_one({"user_id": user_id})
+# Generate API key command
+@bot.on_message(filters.command("getkey"))
+async def getkey(_, message):
+    user_id = message.from_user.id
+    api_url = f"{Config.API_BASE_URL}/generate?user_id={user_id}"
 
-    if user:
-        key = user["api_key"]
-    else:
-        key = str(uuid.uuid4())
-        users.insert_one({"user_id": user_id, "api_key": key, "usage": 0})
+    try:
+        response = requests.get(api_url).json()
+        if response.get("success"):
+            await message.reply_text(
+                f"✅ Your API Key:\n`{response['api_key']}`"
+            )
+        else:
+            await message.reply_text("❌ API key generate karne me problem aayi.")
+    except Exception as e:
+        await message.reply_text(f"⚠️ Error: {e}")
 
-    msg.reply_text(
-        f"🔑 Your API Key:\n`{key}`\n\n"
-        f"✅ You're already registered and ready to use the API!\n\n"
-        f"⚠️ Set API_URL=https://yourdomain.com"
-    )
-
-@bot.on_message(filters.command("plan"))
-def plan(_, msg):
-    user = users.find_one({"user_id": msg.from_user.id})
-    if not user:
-        msg.reply_text("❌ You don’t have an API key yet. Use /apikey")
-        return
-    
-    msg.reply_text(
-        f"📊 API Usage\n\n"
-        f"Used: {user.get('usage', 0)} requests\n"
-        f"Limit: 1000 requests/day"
-    )
-
-bot.run()
+if __name__ == "__main__":
+    bot.run()
